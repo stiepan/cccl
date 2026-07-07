@@ -36,7 +36,9 @@
 #  include <cuda/experimental/__copy_bytes/tensor_query.cuh>
 #  include <cuda/experimental/__copy_bytes/types.cuh>
 
-#  include <cuda/std/__cccl/prologue.h>
+#endif // !_CCCL_COMPILER(NVRTC)
+
+#include <cuda/std/__cccl/prologue.h>
 
 namespace cuda::experimental
 {
@@ -47,6 +49,11 @@ inline constexpr ::cuda::std::size_t __max_shared_mem_kernel_rank = 8;
 //! A tile size is always representable by an unsigned integer.
 using __tile_extent_t = unsigned;
 
+//! Maximum extent of a single tile dimension, set to the warp size so that the innermost tile dimension maps to a
+//! full warp of coalesced accesses.
+inline constexpr size_t __max_tile_size = 32;
+
+#if !_CCCL_COMPILER(NVRTC)
 //! @brief Copy a raw tensor descriptor into one with a narrower static maximum rank.
 //!
 //! @param[in] __tensor Raw tensor descriptor with dynamic rank matching _RankOut
@@ -103,10 +110,6 @@ __num_contiguous_dimensions(const __raw_tensor<_ExtentT, _StrideT, _Tp, _MaxRank
   const auto __dev_id = ::cuda::__driver::__cudevice_to_ordinal(::cuda::__driver::__ctxGetDevice());
   return ::cuda::devices[__dev_id];
 }
-
-//! Maximum extent of a single tile dimension, set to the warp size so that the innermost tile dimension maps to a
-//! full warp of coalesced accesses.
-inline constexpr size_t __max_tile_size = 32;
 
 // The structure holds the tiling information to optimize the transpose (shared-memory) kernel.
 // - __tile_sizes: the size of each tile dimension in shared-memory
@@ -285,9 +288,9 @@ __use_shared_mem_kernel(const __raw_tensor<_ExtentT, _StrideTIn, _TpIn, _MaxRank
   const auto __thread_block_size32 = ::cuda::round_up(__thread_block_size, /*warp size=*/size_t{32});
   return static_cast<int>(__thread_block_size32);
 }
+#endif // !_CCCL_COMPILER(NVRTC)
 } // namespace cuda::experimental
 
-#  include <cuda/std/__cccl/epilogue.h>
+#include <cuda/std/__cccl/epilogue.h>
 
-#endif // !_CCCL_COMPILER(NVRTC)
 #endif // _CUDAX__COPY_COPY_SHARED_MEMORY_UTILS_H

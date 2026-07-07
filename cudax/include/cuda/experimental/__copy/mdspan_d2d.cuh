@@ -53,6 +53,7 @@
 #  include <cuda/experimental/__copy/vector_access.cuh>
 #  include <cuda/experimental/__copy_bytes/simplify_paired.cuh>
 #  include <cuda/experimental/__copy_bytes/tensor_query.cuh>
+#  include <cuda/experimental/__lazy_jit/lazy_launch.cuh>
 
 #  include <cuda/std/__cccl/prologue.h>
 
@@ -75,7 +76,7 @@ template <typename _TpIn,
           typename _ExtentsOut,
           typename _LayoutPolicyOut,
           typename _AccessorPolicyOut>
-_CCCL_HOST_API void copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyIn, _AccessorPolicyIn> __src,
+_CCCL_HOST_API DISPATCH_RET_TYPE copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyIn, _AccessorPolicyIn> __src,
                          ::cuda::device_mdspan<_TpOut, _ExtentsOut, _LayoutPolicyOut, _AccessorPolicyOut> __dst,
                          ::cuda::stream_ref __stream)
 {
@@ -94,7 +95,7 @@ _CCCL_HOST_API void copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyI
   const auto __tensor_size = __src.size();
   if (__tensor_size == 0)
   {
-    return;
+    DISPATCH_RET_VOID;
   }
   if (__src.data_handle() == nullptr || __dst.data_handle() == nullptr)
   {
@@ -140,7 +141,7 @@ _CCCL_HOST_API void copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyI
       __dst_ptr += __dst.mapping().offset();
     }
     ::cuda::__driver::__memcpyAsync(__dst_ptr, __src_ptr, sizeof(_TpIn), __stream.get());
-    return;
+    DISPATCH_RET_VOID;
   }
 
   // rank == 0 for both tensors is already handled above -> their size is exactly 1
@@ -194,7 +195,7 @@ _CCCL_HOST_API void copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyI
           __tensor_size,
           ::cuda::proclaim_copyable_arguments(::cuda::std::identity{}),
           __stream.get());
-        return;
+        DISPATCH_RET_VOID;
       }
     }
     // (2) inner size is large
@@ -204,17 +205,16 @@ _CCCL_HOST_API void copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyI
       if constexpr (__are_vectorizable_copy)
       {
         const auto __op = [__stream](const auto& __src, const auto& __dst) {
-          cudax::__launch_copy_contiguous_kernel(__src, __dst, __stream);
+          return cudax::__launch_copy_contiguous_kernel(__src, __dst, __stream);
         };
-        cudax::__dispatch_by_vector_size(__src_normalized, __dst_normalized, __op);
+        return cudax::__dispatch_by_vector_size(__src_normalized, __dst_normalized, __op);
       }
       // (2b) non-vectorized case but inner size is large enough to use the contiguous kernel
       else
       {
-        cudax::__launch_copy_contiguous_kernel(
+        return cudax::__launch_copy_contiguous_kernel(
           __src_normalized, __dst_normalized, __stream, __src.accessor(), __dst.accessor());
       }
-      return;
     }
     // (3) inner size is not large -> try vectorized case
     if constexpr (__are_vectorizable_copy)
@@ -222,10 +222,9 @@ _CCCL_HOST_API void copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyI
       if (__both_stride1)
       {
         const auto __op = [__stream](const auto& __src, const auto& __dst) {
-          cudax::__copy_optimized(__src, __dst, cudax::__total_size(__src), __stream);
+          return cudax::__copy_optimized(__src, __dst, cudax::__total_size(__src), __stream);
         };
-        cudax::__dispatch_by_vector_size(__src_normalized, __dst_normalized, __op);
-        return;
+        return cudax::__dispatch_by_vector_size(__src_normalized, __dst_normalized, __op);
       }
     }
     // (4) transpose case (rank capped to avoid excessive register pressure in the kernel)
@@ -237,19 +236,17 @@ _CCCL_HOST_API void copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyI
         const auto __dst_rank2 = cudax::__narrow_raw_tensor_rank<2>(__dst_simplified);
         if (cudax::__use_shared_mem_kernel(__src_rank2, __dst_rank2))
         {
-          cudax::__launch_copy_shared_mem_kernel(__src_rank2, __dst_rank2, __stream, __src.accessor(), __dst.accessor());
-          return;
+          return cudax::__launch_copy_shared_mem_kernel(__src_rank2, __dst_rank2, __stream, __src.accessor(), __dst.accessor());
         }
       }
       if (cudax::__use_shared_mem_kernel(__src_simplified, __dst_simplified))
       {
-        cudax::__launch_copy_shared_mem_kernel(
+        return cudax::__launch_copy_shared_mem_kernel(
           __src_simplified, __dst_simplified, __stream, __src.accessor(), __dst.accessor());
-        return;
       }
     }
     // (5) generic case (fallback)
-    cudax::__copy_optimized(
+    return cudax::__copy_optimized(
       __src_normalized,
       __dst_normalized,
       cudax::__total_size(__src_normalized),

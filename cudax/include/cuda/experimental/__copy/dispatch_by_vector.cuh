@@ -27,6 +27,7 @@
 #  include <cuda/std/__cstddef/types.h>
 #  include <cuda/std/__type_traits/integral_constant.h>
 
+#  include <cuda/experimental/__lazy_jit/lazy_launch.cuh>
 #  include <cuda/experimental/__copy/tensor_copy_utils.cuh>
 #  include <cuda/experimental/__copy_bytes/types.cuh>
 
@@ -77,7 +78,7 @@ template <typename _ExtentT,
           typename _TpOut,
           ::cuda::std::size_t _Rank,
           typename _Op>
-_CCCL_HOST_API void __dispatch_by_vector_size(
+_CCCL_HOST_API DISPATCH_RET_TYPE __dispatch_by_vector_size(
   const __raw_tensor<_ExtentT, _StrideTIn, _TpIn, _Rank>& __src,
   const __raw_tensor<_ExtentT, _StrideTOut, _TpOut, _Rank>& __dst,
   _Op __op) noexcept
@@ -86,7 +87,7 @@ _CCCL_HOST_API void __dispatch_by_vector_size(
   const auto __call_vectorized = [&](auto __const_vector_size) {
     const auto __src_recast = cudax::__reshape_vectorized<__const_vector_size>(__src);
     const auto __dst_recast = cudax::__reshape_vectorized<__const_vector_size>(__dst);
-    __op(__src_recast, __dst_recast);
+    return __op(__src_recast, __dst_recast);
   };
   const auto __vector_size_bytes = cudax::__vector_size_bytes(__src, __dst);
 // 32-bytes aligned vector types have been introduced in CTK 13.0
@@ -96,8 +97,7 @@ _CCCL_HOST_API void __dispatch_by_vector_size(
   {
     if (__vector_size_bytes == 32)
     {
-      __call_vectorized(__const_vector_size<32>);
-      return;
+      return __call_vectorized(__const_vector_size<32>);
     }
   }
 #  else // ^^^ _CCCL_CTK_AT_LEAST(13, 0) ^^^ / vvv _CCCL_CTK_BELOW(13, 0) vvv
@@ -107,37 +107,33 @@ _CCCL_HOST_API void __dispatch_by_vector_size(
   {
     if (__vector_size_bytes == 16)
     {
-      __call_vectorized(__const_vector_size<16>);
-      return;
+      return __call_vectorized(__const_vector_size<16>);
     }
   }
   if constexpr (sizeof(_TpIn) <= 8)
   {
     if (__vector_size_bytes == 8)
     {
-      __call_vectorized(__const_vector_size<8>);
-      return;
+      return __call_vectorized(__const_vector_size<8>);
     }
   }
   if constexpr (sizeof(_TpIn) <= 4)
   {
     if (__vector_size_bytes == 4)
     {
-      __call_vectorized(__const_vector_size<4>);
-      return;
+      return __call_vectorized(__const_vector_size<4>);
     }
   }
   if constexpr (sizeof(_TpIn) <= 2)
   {
     if (__vector_size_bytes == 2)
     {
-      __call_vectorized(__const_vector_size<2>);
-      return;
+      return __call_vectorized(__const_vector_size<2>);
     }
   }
   if constexpr (sizeof(_TpIn) <= 1)
   {
-    __call_vectorized(__const_vector_size<1>);
+    return __call_vectorized(__const_vector_size<1>);
   }
   // no fallthrough (sizeof(T) is never 0)
 }

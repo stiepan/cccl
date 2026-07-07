@@ -39,83 +39,13 @@
 #include <cuda/experimental/__copy/tensor_copy_utils.cuh>
 #include <cuda/experimental/__copy/tensor_iterator.cuh>
 #include <cuda/experimental/__copy_bytes/types.cuh>
+#include <cuda/experimental/__lazy_jit/lazy_launch.cuh>
+#include <cuda/experimental/__copy/copy_contiguous_kernel.cuh>
 
 #include <cuda/std/__cccl/prologue.h>
 
 namespace cuda::experimental
 {
-//! @brief Tiled copy kernel for contiguous innermost dimension.
-//!
-//! Uses a 2D grid: blockIdx.x = tile along inner dimension, blockIdx.y = outer index.
-//! Threads within a block stride over the tile, reading from the source and writing to the
-//! destination via accessors. The coordinate iterator maps linear indices to multi-dimensional
-//! coordinates, which are then used with per-tensor strides for the actual memory access.
-//!
-//! @param[in]  __config          Kernel launch configuration
-//! @param[in]  __src_ptr         Pointer to source data
-//! @param[in]  __src_strides     Per-dimension strides for the source tensor
-//! @param[in]  __src_accessor    Accessor for reading source elements
-//! @param[out] __dst_ptr         Pointer to destination data
-//! @param[in]  __dst_strides     Per-dimension strides for the destination tensor
-//! @param[in]  __dst_accessor    Accessor for writing destination elements
-//! @param[in]  __coord_iter      Coordinate iterator for multi-dimensional index mapping
-//! @param[in]  __inner_size      Extent of the contiguous innermost dimension
-template <typename _Config,
-          int _TileSize,
-          typename _TpSrc,
-          typename _TpDst,
-          typename _SrcAccessor,
-          typename _DstAccessor,
-          typename _ExtentT,
-          typename _StrideTIn,
-          typename _StrideTOut,
-          ::cuda::std::size_t _Rank>
-__global__ void __copy_contiguous_kernel(
-  _CCCL_GRID_CONSTANT const _Config __config,
-  _CCCL_GRID_CONSTANT const _TpSrc* const _CCCL_RESTRICT __src_ptr,
-  _CCCL_GRID_CONSTANT const ::cuda::std::array<_StrideTIn, _Rank> __src_strides,
-  _CCCL_GRID_CONSTANT const _SrcAccessor __src_accessor,
-  _CCCL_GRID_CONSTANT _TpDst* const _CCCL_RESTRICT __dst_ptr,
-  _CCCL_GRID_CONSTANT const ::cuda::std::array<_StrideTOut, _Rank> __dst_strides,
-  _CCCL_GRID_CONSTANT const _DstAccessor __dst_accessor,
-  _CCCL_GRID_CONSTANT const __tensor_coord_iterator<_ExtentT, _Rank> __coord_iter,
-  _CCCL_GRID_CONSTANT const _ExtentT __inner_size)
-{
-  using __partial_tensor_src  = __partial_tensor<const _TpSrc, _StrideTIn, _Rank, _SrcAccessor>;
-  using __partial_tensor_dst  = __partial_tensor<_TpDst, _StrideTOut, _Rank, _DstAccessor>;
-  const auto __thread_id      = ::cuda::gpu_thread.rank_as<_ExtentT>(::cuda::block, __config);
-  const auto __block_idx      = ::cuda::block.index_as<_ExtentT>(::cuda::grid);
-  constexpr auto __block_size = ::cuda::gpu_thread.count_as<int>(::cuda::block, __config);
-  const __partial_tensor_src __src{__src_ptr, __src_strides, __src_accessor};
-  const __partial_tensor_dst __dst{__dst_ptr, __dst_strides, __dst_accessor};
-
-  const auto __tile_offset = __block_idx.x * _TileSize;
-  const auto __outer_idx   = __block_idx.y;
-  const auto __remaining   = __inner_size - __tile_offset;
-  const auto __base_idx    = __outer_idx * __inner_size + __tile_offset + __thread_id;
-
-  if (__remaining >= _TileSize)
-  {
-    _CCCL_PRAGMA_UNROLL_FULL()
-    for (int __i = 0; __i < _TileSize; __i += __block_size)
-    {
-      const auto __coord = __coord_iter(__base_idx + __i);
-      __dst(__coord)     = __src(__coord);
-    }
-  }
-  else
-  {
-    _CCCL_PRAGMA_UNROLL_FULL()
-    for (int __i = 0; __i < _TileSize; __i += __block_size)
-    {
-      if (__thread_id + __i < __remaining)
-      {
-        const auto __coord = __coord_iter(__base_idx + __i);
-        __dst(__coord)     = __src(__coord);
-      }
-    }
-  }
-}
 
 //! @brief Query the minimum bytes-in-flight target for the current GPU architecture.
 //!
@@ -138,23 +68,23 @@ __global__ void __copy_contiguous_kernel(
 
 // Dispatch a callable with a compile-time tile size derived from a runtime value.
 template <typename _Op>
-_CCCL_HOST_API void __dispatch_tile_size(int __tile_size, _Op __op) noexcept
+_CCCL_HOST_API DISPATCH_RET_TYPE __dispatch_tile_size(int __tile_size, _Op __op)
 {
   if (__tile_size >= 2048)
   {
-    __op(::cuda::std::integral_constant<int, 2048>{});
+    return __op(::cuda::std::integral_constant<int, 2048>{});
   }
   else if (__tile_size >= 1024)
   {
-    __op(::cuda::std::integral_constant<int, 1024>{});
+    return __op(::cuda::std::integral_constant<int, 1024>{});
   }
   else if (__tile_size >= 512)
   {
-    __op(::cuda::std::integral_constant<int, 512>{});
+    return __op(::cuda::std::integral_constant<int, 512>{});
   }
   else
   {
-    __op(::cuda::std::integral_constant<int, 256>{});
+    return __op(::cuda::std::integral_constant<int, 256>{});
   }
 }
 
@@ -176,7 +106,7 @@ template <typename _ExtentT,
           ::cuda::std::size_t _Rank,
           typename _SrcAccessor = ::cuda::std::default_accessor<_TpIn>,
           typename _DstAccessor = ::cuda::std::default_accessor<_TpOut>>
-_CCCL_HOST_API void __launch_copy_contiguous_kernel(
+_CCCL_HOST_API DISPATCH_RET_TYPE __launch_copy_contiguous_kernel(
   const __raw_tensor<_ExtentT, _StrideTIn, _TpIn, _Rank>& __src,
   const __raw_tensor<_ExtentT, _StrideTOut, _TpOut, _Rank>& __dst,
   ::cuda::stream_ref __stream,
@@ -189,7 +119,7 @@ _CCCL_HOST_API void __launch_copy_contiguous_kernel(
     ::cuda::experimental::__elem_per_thread(static_cast<int>(sizeof(_TpIn)), __bytes_in_flight);
   const auto __tile_size_rt = __block_size * __elems_per_thread;
 
-  ::cuda::experimental::__dispatch_tile_size(__tile_size_rt, [&](auto __tile_constant) {
+  return ::cuda::experimental::__dispatch_tile_size(__tile_size_rt, [&](auto __tile_constant) {
     constexpr int __tile_size    = decltype(__tile_constant)::value;
     const auto __inner_size      = __src.__extents[0];
     const auto __outer_size      = ::cuda::experimental::__total_size(__src) / __inner_size;
@@ -203,9 +133,8 @@ _CCCL_HOST_API void __launch_copy_contiguous_kernel(
     const auto __config    = ::cuda::make_config(::cuda::block_dims<__block_size>(), ::cuda::grid_dims(__grid_dims));
 
     const __tensor_coord_iterator<_ExtentT, _Rank> __coord_iter{__src.__extents};
-    const auto __kernel = ::cuda::experimental::__copy_contiguous_kernel<
-      decltype(__config),
-      __tile_size,
+    using _Functor = ::cuda::experimental::__copy_contiguous_impl<
+      ::cuda::std::integral_constant<int, __tile_size>,
       _TpIn,
       _TpOut,
       _SrcAccessor,
@@ -213,12 +142,12 @@ _CCCL_HOST_API void __launch_copy_contiguous_kernel(
       _ExtentT,
       _StrideTIn,
       _StrideTOut,
-      _Rank>;
+      ::cuda::std::integral_constant<::cuda::std::size_t, _Rank>>;
 
-    ::cuda::launch(
+    return LAUNCH_OR_LAZY_JIT_DISPATCH(
       __stream,
       __config,
-      __kernel,
+      _Functor,
       __src.__data,
       __src.__strides,
       __src_accessor,

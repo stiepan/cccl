@@ -77,7 +77,7 @@ struct __tensor_coord_iterator
   //! @param[in] __in_array Source array with elements of type _UExtentT
   //! @return Array with elements statically cast to _ExtentT
   template <typename _UExtentT>
-  [[nodiscard]] static _CCCL_HOST_API ::cuda::std::array<__unsigned_extent_t, _Rank>
+  [[nodiscard]] static _CCCL_HOST_DEVICE_API ::cuda::std::array<__unsigned_extent_t, _Rank>
   __to_extent_array(const ::cuda::std::array<_UExtentT, _Rank>& __in_array) noexcept
   {
     ::cuda::std::array<__unsigned_extent_t, _Rank> __out_array{};
@@ -92,7 +92,7 @@ struct __tensor_coord_iterator
   //!
   //! @param[in] __extents Tensor extents (may be unsigned; converted to _ExtentT internally)
   template <typename _UExtentT>
-  _CCCL_HOST_API explicit __tensor_coord_iterator(const ::cuda::std::array<_UExtentT, _Rank>& __extents) noexcept
+  _CCCL_HOST_DEVICE_API explicit __tensor_coord_iterator(const ::cuda::std::array<_UExtentT, _Rank>& __extents) noexcept
       : __extents_{::cuda::experimental::__extents_fast_div_mod(__to_extent_array(__extents))}
   {}
 
