@@ -34,7 +34,10 @@
 
 #include <cuda/experimental/__copy/tensor_iterator.cuh>
 #include <cuda/experimental/__copy/copy_shared_memory_utils.cuh>
-
+// Not used by this kernel's own logic -- pulled in because a template argument (_TpSrc/_TpDst) may be
+// ::cuda::experimental::__vector_access<N> itself, via the generic opaque-blob repr_type fallback (see
+// repr_type_opaque_blob.cuh), which needs this type visible wherever the kernel gets NVRTC-instantiated.
+#include <cuda/experimental/__copy/vector_access.cuh>
 
 #include <cuda/std/__cccl/prologue.h>
 

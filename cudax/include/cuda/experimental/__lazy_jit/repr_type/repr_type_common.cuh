@@ -42,6 +42,16 @@ namespace cuda::experimental::lazy_jit
 //! catch-all body that spells any unsupported @c _Tp as the literal text @c "unknown" -- useful e.g. while
 //! exploring which types a given describe site actually needs, without having every one of them be a hard
 //! compile error up front.
+//!
+//! Note: a generic "any trivially-copyable, alignment-equals-size type falls back to
+//! @c __vector_access<sizeof(_Tp)>'s spelling" specialization was deliberately *not* added here: SFINAE'd
+//! partial specializations like that one do not reliably coexist with the *other*, template-pattern-based
+//! partial specializations already in this family (e.g. @c repr_type<functor_kernel_impl<_Functor,
+//! _Hierarchy>> in repr_type_kernel_functor.cuh) whenever the pattern-based one happens to also match an
+//! empty (`sizeof==alignof==1`) type -- GCC reports a genuine "ambiguous template instantiation" in that
+//! case, not just a style nit. Callers that want a dtype-agnostic element type should instead use
+//! @c cuda::experimental::__vector_access<N> directly as their mdspan's element type (see
+//! repr_type_vector_access.cuh, which already spells it) rather than relying on a fallback here.
 #  ifdef REPR_TYPE_ALLOW_UNKNOWN
 template <typename _Tp>
 struct repr_type
