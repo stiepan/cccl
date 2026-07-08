@@ -27,7 +27,6 @@
 #  include <cuda/std/__cstddef/types.h>
 #  include <cuda/std/__type_traits/integral_constant.h>
 
-#  include <cuda/experimental/__lazy_jit/lazy_launch.cuh>
 #  include <cuda/experimental/__copy/tensor_copy_utils.cuh>
 #  include <cuda/experimental/__copy_bytes/types.cuh>
 
@@ -78,7 +77,7 @@ template <typename _ExtentT,
           typename _TpOut,
           ::cuda::std::size_t _Rank,
           typename _Op>
-_CCCL_HOST_API DISPATCH_RET_TYPE __dispatch_by_vector_size(
+_CCCL_HOST_API ::cuda::experimental::lazy_jit::dispatch_ret_type __dispatch_by_vector_size(
   const __raw_tensor<_ExtentT, _StrideTIn, _TpIn, _Rank>& __src,
   const __raw_tensor<_ExtentT, _StrideTOut, _TpOut, _Rank>& __dst,
   _Op __op) noexcept

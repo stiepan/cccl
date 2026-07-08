@@ -39,7 +39,7 @@
 #include <cuda/experimental/__copy/tensor_copy_utils.cuh>
 #include <cuda/experimental/__copy/tensor_iterator.cuh>
 #include <cuda/experimental/__copy_bytes/types.cuh>
-#include <cuda/experimental/__lazy_jit/lazy_launch.cuh>
+#include <cuda/experimental/__lazy_jit/dispatch.cuh>
 #include <cuda/experimental/__copy/copy_contiguous_kernel.cuh>
 
 #include <cuda/std/__cccl/prologue.h>
@@ -68,7 +68,7 @@ namespace cuda::experimental
 
 // Dispatch a callable with a compile-time tile size derived from a runtime value.
 template <typename _Op>
-_CCCL_HOST_API DISPATCH_RET_TYPE __dispatch_tile_size(int __tile_size, _Op __op)
+_CCCL_HOST_API ::cuda::experimental::lazy_jit::dispatch_ret_type __dispatch_tile_size(int __tile_size, _Op __op)
 {
   if (__tile_size >= 2048)
   {
@@ -106,7 +106,7 @@ template <typename _ExtentT,
           ::cuda::std::size_t _Rank,
           typename _SrcAccessor = ::cuda::std::default_accessor<_TpIn>,
           typename _DstAccessor = ::cuda::std::default_accessor<_TpOut>>
-_CCCL_HOST_API DISPATCH_RET_TYPE __launch_copy_contiguous_kernel(
+_CCCL_HOST_API ::cuda::experimental::lazy_jit::dispatch_ret_type __launch_copy_contiguous_kernel(
   const __raw_tensor<_ExtentT, _StrideTIn, _TpIn, _Rank>& __src,
   const __raw_tensor<_ExtentT, _StrideTOut, _TpOut, _Rank>& __dst,
   ::cuda::stream_ref __stream,
@@ -144,10 +144,10 @@ _CCCL_HOST_API DISPATCH_RET_TYPE __launch_copy_contiguous_kernel(
       _StrideTOut,
       ::cuda::std::integral_constant<::cuda::std::size_t, _Rank>>;
 
-    return LAUNCH_OR_LAZY_JIT_DISPATCH(
+    return cuda::experimental::lazy_jit::device(
       __stream,
       __config,
-      _Functor,
+      _Functor{},
       __src.__data,
       __src.__strides,
       __src_accessor,

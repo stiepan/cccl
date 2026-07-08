@@ -63,6 +63,7 @@ struct KernelDesc
   ::std::string functor_t{};
   kernel_args_ptr args_bundle{nullptr, +[](void*) {}};
   const char* type_id_name{};
+  const char* other_type_id_name{};
   unsigned long long type_id_hash = 0;
   unsigned grid_dim_x             = 0;
   unsigned grid_dim_y             = 1;

@@ -30,14 +30,15 @@
 
 #ifdef LAZY_JIT_DISPATCH
 #  include <cuda/std/__type_traits/remove_cvref.h>
+#  include <cuda/std/__utility/typeid.h>
 #  include <cuda/std/tuple>
 
+#  include <cuda/experimental/__copy/tensor_iterator.cuh>
+#  include <cuda/experimental/__copy_bytes/types.cuh>
 #  include <cuda/experimental/__lazy_jit/desc.cuh>
 #  include <cuda/experimental/__lazy_jit/functor_kernel.cuh>
 #  include <cuda/experimental/__lazy_jit/repr_type/repr_includes.cuh>
 #  include <cuda/experimental/__lazy_jit/repr_type/repr_type.cuh>
-#  include <cuda/experimental/__copy/tensor_iterator.cuh>
-#  include <cuda/experimental/__copy_bytes/types.cuh>
 
 #  include <string>
 #  include <utility>
@@ -104,8 +105,8 @@ inline void __fill_launch_dims(KernelDesc& __desc, const _Config& __config)
 //! per-kernel argument-type list to build (or keep in sync) here at all.
 //!
 //! @tparam _Functor The kernel functor type (never actually constructed here).
-template <typename _Functor, typename _Submitter, typename _LaunchConfig, typename... _Args>
-KernelDesc make_kernel_desc(_Submitter&& __submitter, const _LaunchConfig& __conf, _Args&&... __args)
+template <typename _Submitter, typename _LaunchConfig, typename _Functor, typename... _Args>
+KernelDesc make_kernel_desc(_Submitter&& __submitter, const _LaunchConfig& __conf, const _Functor, _Args&&... __args)
 {
   static_assert(::cuda::std::is_same_v<::cuda::std::remove_cvref_t<_Submitter>, ::cuda::stream_ref>,
                 "Submitter must be a stream_ref");
@@ -119,34 +120,35 @@ KernelDesc make_kernel_desc(_Submitter&& __submitter, const _LaunchConfig& __con
   __desc.functor_t       = repr_type<functor_kernel_t>::fixed_string.c_str();
   __desc.args_bundle     = make_kernel_args(__args_tuple);
   __fill_launch_dims(__desc, __conf);
-  __desc.type_id_name = typeid(functor_kernel_t).name();
-  __desc.type_id_hash = typeid(functor_kernel_t).hash_code();
+  __desc.type_id_name       = typeid(functor_kernel_t).name();
+  __desc.type_id_hash       = typeid(functor_kernel_t).hash_code();
+  __desc.other_type_id_name = ::cuda::std::__pretty_nameof<functor_kernel_t>().data();
   return __desc;
 }
 #endif // LAZY_JIT_DISPATCH
 } // namespace lazy_jit
 } // namespace cuda::experimental
 
-#include <cuda/std/__cccl/epilogue.h>
+// //! @brief Launch a kernel, or (when @c LAZY_JIT_DISPATCH is defined) stringify the launch for JIT
+// //! dispatch instead of actually launching it.
+// #ifdef LAZY_JIT_DISPATCH
+// //! @param functor_t A stateless kernel functor type (see @c make_kernel_desc's docs) -- @p functor_t
+// //!   is a single type (never a comma-separated list), so, unlike @p kernel/@p conf/@p ..., it needs no
+// //!   special wrapping to survive being an (outer) macro argument.
+// #  define LAUNCH_OR_LAZY_JIT_DISPATCH(stream, conf, functor_t, ...) \
+//     ::cuda::experimental::lazy_jit::make_kernel_desc<functor_t>(stream, conf, __VA_ARGS__)
+// #  define DISPATCH_RET_TYPE ::cuda::experimental::lazy_jit::KernelDesc
+// #  define DISPATCH_RET_VOID return ::cuda::experimental::lazy_jit::KernelDesc{};
+// #else
+// //! @brief Non-JIT branch: @p functor_t is launched directly via @c cuda::launch's own functor-kernel
+// //! overload (see the @c cuda::launch overload taking a functor in `<cuda/__launch/launch.h>`), which
+// //! handles picking/instantiating an appropriate @c __global__ launcher itself.
+// #  define LAUNCH_OR_LAZY_JIT_DISPATCH(stream, conf, functor_t, ...) \
+//     ::cuda::launch(stream, conf, functor_t{}, __VA_ARGS__)
+// #  define DISPATCH_RET_TYPE void
+// #  define DISPATCH_RET_VOID return;
+// #endif // LAZY_JIT_DISPATCH
 
-//! @brief Launch a kernel, or (when @c LAZY_JIT_DISPATCH is defined) stringify the launch for JIT
-//! dispatch instead of actually launching it.
-#ifdef LAZY_JIT_DISPATCH
-//! @param functor_t A stateless kernel functor type (see @c make_kernel_desc's docs) -- @p functor_t
-//!   is a single type (never a comma-separated list), so, unlike @p kernel/@p conf/@p ..., it needs no
-//!   special wrapping to survive being an (outer) macro argument.
-#  define LAUNCH_OR_LAZY_JIT_DISPATCH(stream, conf, functor_t, ...) \
-    ::cuda::experimental::lazy_jit::make_kernel_desc<functor_t>(stream, conf, __VA_ARGS__)
-#  define DISPATCH_RET_TYPE ::cuda::experimental::lazy_jit::KernelDesc
-#  define DISPATCH_RET_VOID return ::cuda::experimental::lazy_jit::KernelDesc{};
-#else
-//! @brief Non-JIT branch: @p functor_t is launched directly via @c cuda::launch's own functor-kernel
-//! overload (see the @c cuda::launch overload taking a functor in `<cuda/__launch/launch.h>`), which
-//! handles picking/instantiating an appropriate @c __global__ launcher itself.
-#  define LAUNCH_OR_LAZY_JIT_DISPATCH(stream, conf, functor_t, ...) \
-    ::cuda::launch(stream, conf, functor_t{}, __VA_ARGS__)
-#  define DISPATCH_RET_TYPE void
-#  define DISPATCH_RET_VOID return;
-#endif // LAZY_JIT_DISPATCH
+#include <cuda/std/__cccl/epilogue.h>
 
 #endif // _CUDAX__LAZY_JIT_LAUNCH_H

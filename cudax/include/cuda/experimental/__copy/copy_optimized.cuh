@@ -31,7 +31,7 @@
 #include <cuda/std/tuple>
 
 #include <cuda/experimental/__copy/copy_optimized_kernel.cuh>
-#include <cuda/experimental/__lazy_jit/lazy_launch.cuh>
+#include <cuda/experimental/__lazy_jit/dispatch.cuh>
 #include <cuda/experimental/__copy/tensor_iterator.cuh>
 #include <cuda/experimental/__copy_bytes/types.cuh>
 
@@ -58,7 +58,7 @@ template <typename _ExtentT,
           ::cuda::std::size_t _Rank,
           typename _SrcAccessor = ::cuda::std::default_accessor<_TpIn>,
           typename _DstAccessor = ::cuda::std::default_accessor<_TpOut>>
-_CCCL_HOST_API DISPATCH_RET_TYPE __copy_optimized(
+_CCCL_HOST_API ::cuda::experimental::lazy_jit::dispatch_ret_type __copy_optimized(
   const __raw_tensor<_ExtentT, _StrideTIn, _TpIn, _Rank>& __src,
   const __raw_tensor<_ExtentT, _StrideTOut, _TpOut, _Rank>& __dst,
   _ExtentT __tensor_size,
@@ -85,10 +85,10 @@ _CCCL_HOST_API DISPATCH_RET_TYPE __copy_optimized(
     _StrideTOut,
     ::cuda::std::integral_constant<::cuda::std::size_t, _Rank>>;
 
-  return LAUNCH_OR_LAZY_JIT_DISPATCH(
+  return ::cuda::experimental::lazy_jit::device(
     __stream,
     __config,
-    _Functor,
+    _Functor{},
     __src.__data,
     __src.__strides,
     __src_accessor,

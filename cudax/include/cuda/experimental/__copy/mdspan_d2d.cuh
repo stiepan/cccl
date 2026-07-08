@@ -53,7 +53,6 @@
 #  include <cuda/experimental/__copy/vector_access.cuh>
 #  include <cuda/experimental/__copy_bytes/simplify_paired.cuh>
 #  include <cuda/experimental/__copy_bytes/tensor_query.cuh>
-#  include <cuda/experimental/__lazy_jit/lazy_launch.cuh>
 
 #  include <cuda/std/__cccl/prologue.h>
 
@@ -76,9 +75,10 @@ template <typename _TpIn,
           typename _ExtentsOut,
           typename _LayoutPolicyOut,
           typename _AccessorPolicyOut>
-_CCCL_HOST_API DISPATCH_RET_TYPE copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyIn, _AccessorPolicyIn> __src,
-                         ::cuda::device_mdspan<_TpOut, _ExtentsOut, _LayoutPolicyOut, _AccessorPolicyOut> __dst,
-                         ::cuda::stream_ref __stream)
+_CCCL_HOST_API ::cuda::experimental::lazy_jit::dispatch_ret_type
+copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyIn, _AccessorPolicyIn> __src,
+     ::cuda::device_mdspan<_TpOut, _ExtentsOut, _LayoutPolicyOut, _AccessorPolicyOut> __dst,
+     ::cuda::stream_ref __stream)
 {
   namespace cudax = ::cuda::experimental;
   static_assert(::cuda::std::is_convertible_v<_TpIn, _TpOut>, "TpIn must be convertible to TpOut");
@@ -95,7 +95,7 @@ _CCCL_HOST_API DISPATCH_RET_TYPE copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _
   const auto __tensor_size = __src.size();
   if (__tensor_size == 0)
   {
-    DISPATCH_RET_VOID;
+    return cuda::experimental::lazy_jit::host();
   }
   if (__src.data_handle() == nullptr || __dst.data_handle() == nullptr)
   {
@@ -130,18 +130,19 @@ _CCCL_HOST_API DISPATCH_RET_TYPE copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _
 
   if (__tensor_size == 1 && __are_byte_copyable)
   {
-    auto __src_ptr = __src.data_handle();
-    auto __dst_ptr = __dst.data_handle();
-    if constexpr (::cuda::__is_layout_stride_relaxed_v<_LayoutPolicyIn>)
-    {
-      __src_ptr += __src.mapping().offset();
-    }
-    if constexpr (::cuda::__is_layout_stride_relaxed_v<_LayoutPolicyOut>)
-    {
-      __dst_ptr += __dst.mapping().offset();
-    }
-    ::cuda::__driver::__memcpyAsync(__dst_ptr, __src_ptr, sizeof(_TpIn), __stream.get());
-    DISPATCH_RET_VOID;
+    return cuda::experimental::lazy_jit::host([&]() {
+      auto __src_ptr = __src.data_handle();
+      auto __dst_ptr = __dst.data_handle();
+      if constexpr (::cuda::__is_layout_stride_relaxed_v<_LayoutPolicyIn>)
+      {
+        __src_ptr += __src.mapping().offset();
+      }
+      if constexpr (::cuda::__is_layout_stride_relaxed_v<_LayoutPolicyOut>)
+      {
+        __dst_ptr += __dst.mapping().offset();
+      }
+      ::cuda::__driver::__memcpyAsync(__dst_ptr, __src_ptr, sizeof(_TpIn), __stream.get());
+    });
   }
 
   // rank == 0 for both tensors is already handled above -> their size is exactly 1
@@ -187,6 +188,7 @@ _CCCL_HOST_API DISPATCH_RET_TYPE copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _
     {
       if (static_cast<::cuda::std::size_t>(__tile_size) == __tensor_size)
       {
+        return cuda::experimental::lazy_jit::host([&]() {
         _CCCL_TRY_CUDA_API(
           CUB_NS_QUALIFIER::DeviceTransform::Transform,
           "cub::DeviceTransform::Transform failed",
@@ -195,7 +197,7 @@ _CCCL_HOST_API DISPATCH_RET_TYPE copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _
           __tensor_size,
           ::cuda::proclaim_copyable_arguments(::cuda::std::identity{}),
           __stream.get());
-        DISPATCH_RET_VOID;
+        });
       }
     }
     // (2) inner size is large
@@ -236,7 +238,8 @@ _CCCL_HOST_API DISPATCH_RET_TYPE copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _
         const auto __dst_rank2 = cudax::__narrow_raw_tensor_rank<2>(__dst_simplified);
         if (cudax::__use_shared_mem_kernel(__src_rank2, __dst_rank2))
         {
-          return cudax::__launch_copy_shared_mem_kernel(__src_rank2, __dst_rank2, __stream, __src.accessor(), __dst.accessor());
+          return cudax::__launch_copy_shared_mem_kernel(
+            __src_rank2, __dst_rank2, __stream, __src.accessor(), __dst.accessor());
         }
       }
       if (cudax::__use_shared_mem_kernel(__src_simplified, __dst_simplified))

@@ -31,7 +31,7 @@
 #include <cuda/std/__type_traits/remove_cv.h>
 #include <cuda/std/array>
 
-#include <cuda/experimental/__lazy_jit/lazy_launch.cuh>
+#include <cuda/experimental/__lazy_jit/dispatch.cuh>
 #include <cuda/experimental/__copy/tensor_iterator.cuh>
 #include <cuda/experimental/__copy_bytes/types.cuh>
 #include <cuda/experimental/__copy/copy_shared_memory_kernel.cuh>
@@ -83,7 +83,7 @@ template <typename _ExtentT,
           ::cuda::std::size_t _MaxRank,
           typename _SrcAccessor,
           typename _DstAccessor>
-_CCCL_HOST_API DISPATCH_RET_TYPE __launch_copy_shared_mem_kernel(
+_CCCL_HOST_API ::cuda::experimental::lazy_jit::dispatch_ret_type __launch_copy_shared_mem_kernel(
   const __raw_tensor<_ExtentT, _StrideTIn, _TpIn, _MaxRank>& __src,
   const __raw_tensor<_ExtentT, _StrideTOut, _TpOut, _MaxRank>& __dst,
   ::cuda::stream_ref __stream,
@@ -181,10 +181,10 @@ _CCCL_HOST_API DISPATCH_RET_TYPE __launch_copy_shared_mem_kernel(
       _StrideTIn,
       _StrideTOut>;
 
-    return LAUNCH_OR_LAZY_JIT_DISPATCH(
+    return ::cuda::experimental::lazy_jit::device(
       __stream,
       __config,
-      _Functor,
+      _Functor{},
       __src.__data,
       __src_accessor,
       __dst.__data,
@@ -217,10 +217,10 @@ _CCCL_HOST_API DISPATCH_RET_TYPE __launch_copy_shared_mem_kernel(
       _StrideTIn,
       _StrideTOut>;
 
-    return LAUNCH_OR_LAZY_JIT_DISPATCH(
+    return ::cuda::experimental::lazy_jit::device(
       __stream,
       __config,
-      _Functor,
+      _Functor{},
       __src.__data,
       __src_accessor,
       __dst.__data,
