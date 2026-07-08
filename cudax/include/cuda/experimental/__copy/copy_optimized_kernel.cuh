@@ -100,6 +100,13 @@ struct __copy_optimized_impl
     const __tensor_coord_iterator<_ExtentT, _Rank> __coord_iter,
     const _ExtentT __tensor_size) const
   {
+    // Under LAZY_JIT_DISPATCH, the host build only needs this operator()'s *declaration* (its
+    // parameter-type list, e.g. for operator_args_t) to build a KernelDesc -- it never actually
+    // calls it. The real body below uses device-only APIs (rank_as/count_as, built on
+    // threadIdx/blockIdx) that only a genuine CUDA compiler can parse, so it's stubbed out here and
+    // only compiled for real when NVRTC compiles the extracted `code` string (which does not define
+    // LAZY_JIT_DISPATCH).
+#ifndef LAZY_JIT_DISPATCH
     using __partial_tensor_src = __partial_tensor<const _TpSrc, _StrideTIn, _Rank, _SrcAccessor>;
     using __partial_tensor_dst = __partial_tensor<_TpDst, _StrideTOut, _Rank, _DstAccessor>;
     const auto __idx           = ::cuda::gpu_thread.rank_as<_ExtentT>(::cuda::grid, __config);
@@ -116,6 +123,7 @@ struct __copy_optimized_impl
         return;
       }
     }
+#endif // !LAZY_JIT_DISPATCH
   }
 };
 } // namespace cuda::experimental

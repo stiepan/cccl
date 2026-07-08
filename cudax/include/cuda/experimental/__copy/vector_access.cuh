@@ -56,7 +56,12 @@ using __vector_access_t = __vector_access<_VectorBytes>;
 //! @return Maximum vector width in bytes (32 for SM >= 10.0, 16 otherwise)
 [[nodiscard]] _CCCL_HOST_API inline ::cuda::std::size_t __max_gpu_arch_vector_size() noexcept
 {
-#  if _CCCL_CTK_AT_LEAST(13, 0)
+#  ifdef LAZY_JIT_DISPATCH
+  // JIT-desc-generation mode doesn't have (and shouldn't require) a live CUDA context/device:
+  // pessimistically assume the minimum vector width supported by any CCCL-supported architecture
+  // (32-byte access is only guaranteed for SM >= 10.0 with CTK >= 13.0).
+  return 16;
+#  elif _CCCL_CTK_AT_LEAST(13, 0)
   const auto __dev_id = ::cuda::__driver::__cudevice_to_ordinal(::cuda::__driver::__ctxGetDevice());
   const auto __dev    = ::cuda::devices[__dev_id];
   const auto __major  = __dev.attribute<::cudaDevAttrComputeCapabilityMajor>();

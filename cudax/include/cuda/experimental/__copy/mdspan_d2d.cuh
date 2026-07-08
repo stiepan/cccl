@@ -25,7 +25,14 @@
 
 #if !_CCCL_COMPILER(NVRTC)
 
-#  include <cub/device/device_transform.cuh>
+// cub::DeviceTransform::Transform's device_transform.cuh pulls in real __global__ kernel bodies
+// (<<<>>> launch syntax, threadIdx/blockIdx, inline PTX) that only a CUDA-capable compiler can
+// parse at all -- not just link -- regardless of whether the templates are ever instantiated. The
+// call site below is already deferred behind lazy_jit::host(), so under LAZY_JIT_DISPATCH we skip
+// the include entirely to allow this header to be compiled by a plain host compiler.
+#  ifndef LAZY_JIT_DISPATCH
+#    include <cub/device/device_transform.cuh>
+#  endif // !LAZY_JIT_DISPATCH
 
 #  include <cuda/__cmath/pow2.h>
 #  include <cuda/__driver/driver_api.h>
@@ -189,6 +196,7 @@ copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyIn, _AccessorPolicyIn
       if (static_cast<::cuda::std::size_t>(__tile_size) == __tensor_size)
       {
         return cuda::experimental::lazy_jit::host([&]() {
+        #ifndef LAZY_JIT_DISPATCH
         _CCCL_TRY_CUDA_API(
           CUB_NS_QUALIFIER::DeviceTransform::Transform,
           "cub::DeviceTransform::Transform failed",
@@ -197,6 +205,7 @@ copy(::cuda::device_mdspan<_TpIn, _ExtentsIn, _LayoutPolicyIn, _AccessorPolicyIn
           __tensor_size,
           ::cuda::proclaim_copyable_arguments(::cuda::std::identity{}),
           __stream.get());
+        #endif // LAZY_JIT_DISPATCH
         });
       }
     }

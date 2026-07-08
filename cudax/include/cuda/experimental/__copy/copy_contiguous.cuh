@@ -53,10 +53,17 @@ namespace cuda::experimental
 //! @return Bytes-in-flight target (e.g. 12KB for V100, 16KB for A100, 48KB for H200, 64KB for B200)
 [[nodiscard]] _CCCL_HOST_API inline int __bytes_in_flight() noexcept
 {
+#  ifdef LAZY_JIT_DISPATCH
+  // JIT-desc-generation mode doesn't have (and shouldn't require) a live CUDA context/device:
+  // pessimistically assume the minimum bytes-in-flight target across all CCCL-supported
+  // architectures (matches cc_to_min_bytes_in_flight's own "V100 and below" floor).
+  return 12 * 1024;
+#  else
   const auto __dev_id = ::cuda::__driver::__cudevice_to_ordinal(::cuda::__driver::__ctxGetDevice());
   const auto __dev    = ::cuda::devices[__dev_id];
   const auto __cc     = ::cuda::device_attributes::compute_capability(__dev);
   return CUB_NS_QUALIFIER::detail::transform::cc_to_min_bytes_in_flight(__cc);
+#  endif // LAZY_JIT_DISPATCH
 }
 
 // Compute the number of elements each thread copies for a given vector width.

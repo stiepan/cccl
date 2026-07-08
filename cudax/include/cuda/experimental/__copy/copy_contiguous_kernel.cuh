@@ -87,6 +87,10 @@ struct __copy_contiguous_impl
     const __tensor_coord_iterator<_ExtentT, _Rank> __coord_iter,
     const _ExtentT __inner_size) const
   {
+    // See the analogous comment in __copy_optimized_impl::operator() (copy_optimized_kernel.cuh):
+    // stubbed out under LAZY_JIT_DISPATCH so a plain host build never has to parse the device-only
+    // APIs below; the real body is only compiled by NVRTC (which doesn't define LAZY_JIT_DISPATCH).
+#ifndef LAZY_JIT_DISPATCH
     using __partial_tensor_src  = __partial_tensor<const _TpSrc, _StrideTIn, _Rank, _SrcAccessor>;
     using __partial_tensor_dst  = __partial_tensor<_TpDst, _StrideTOut, _Rank, _DstAccessor>;
     const auto __thread_id      = ::cuda::gpu_thread.rank_as<_ExtentT>(::cuda::block, __config);
@@ -121,6 +125,7 @@ struct __copy_contiguous_impl
         }
       }
     }
+#endif // !LAZY_JIT_DISPATCH
   }
 };
 } // namespace cuda::experimental

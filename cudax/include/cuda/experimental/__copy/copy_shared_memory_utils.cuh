@@ -215,8 +215,15 @@ __find_shared_mem_tiling(const __raw_tensor<_ExtentT, _StrideTIn, _TpSrc, _MaxRa
   __result.__src_perm = ::cuda::experimental::__stride_order(__src);
   __result.__dst_perm = ::cuda::experimental::__stride_order(__dst);
 
+#ifdef LAZY_JIT_DISPATCH
+  // JIT-desc-generation mode doesn't have (and shouldn't require) a live CUDA context/device:
+  // pessimistically assume the long-standing static (non-optin) per-block shared-memory floor
+  // shared by all CCCL-supported architectures.
+  constexpr size_t __max_shared_mem_bytes = 48 * 1024;
+#else
   const auto __current_dev            = ::cuda::experimental::__current_device();
   const size_t __max_shared_mem_bytes = __current_dev.attribute<::cudaDevAttrMaxSharedMemoryPerBlock>();
+#endif // LAZY_JIT_DISPATCH
   const auto __src_coalesced_tile_size =
     ::cuda::experimental::__add_coalesced_tile_run<_TpIn>(__src, __result.__src_perm, __result, __max_shared_mem_bytes);
   const auto __dst_coalesced_tile_size =
@@ -231,7 +238,12 @@ __find_shared_mem_tiling(const __raw_tensor<_ExtentT, _StrideTIn, _TpSrc, _MaxRa
   }
 
   // There must be enough blocks to keep the GPU busy (at least one full wave across all SMs).
+#ifdef LAZY_JIT_DISPATCH
+  // Pessimistic (conservative-low) SM count placeholder -- see the comment above.
+  constexpr size_t __num_sms = 8;
+#else
   const size_t __num_sms = __current_dev.attribute<::cudaDevAttrMultiProcessorCount>();
+#endif // LAZY_JIT_DISPATCH
   size_t __num_tiles     = 1;
   for (size_t __r = 0; __r < __dst.__rank; ++__r)
   {
@@ -279,10 +291,19 @@ __use_shared_mem_kernel(const __raw_tensor<_ExtentT, _StrideTIn, _TpIn, _MaxRank
 [[nodiscard]] _CCCL_HOST_API inline int __find_thread_block_size(::cuda::std::size_t __tile_total_bytes) noexcept
 {
   using ::cuda::std::size_t;
+#ifdef LAZY_JIT_DISPATCH
+  // JIT-desc-generation mode doesn't have (and shouldn't require) a live CUDA context/device:
+  // pessimistic floors across all CCCL-supported architectures. MaxThreadsPerBlock has been a
+  // hardware-invariant 1024 since Fermi; the other two are conservative low placeholders.
+  constexpr size_t __total_sm_threads       = 1536;
+  constexpr size_t __max_thread_block_size  = 1024;
+  constexpr size_t __total_shared_mem_bytes = 48 * 1024;
+#else
   const auto __dev                      = ::cuda::experimental::__current_device();
   const size_t __total_sm_threads       = __dev.attribute<::cudaDevAttrMaxThreadsPerMultiProcessor>();
   const size_t __max_thread_block_size  = __dev.attribute<::cudaDevAttrMaxThreadsPerBlock>();
   const size_t __total_shared_mem_bytes = __dev.attribute<::cudaDevAttrMaxSharedMemoryPerMultiprocessor>();
+#endif // LAZY_JIT_DISPATCH
   const auto __num_blocks_per_sm        = __total_shared_mem_bytes / __tile_total_bytes;
   const auto __thread_block_size = ::cuda::std::min(__total_sm_threads / __num_blocks_per_sm, __max_thread_block_size);
   const auto __thread_block_size32 = ::cuda::round_up(__thread_block_size, /*warp size=*/size_t{32});

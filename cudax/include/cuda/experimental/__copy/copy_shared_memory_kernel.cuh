@@ -129,6 +129,10 @@ struct __copy_shared_mem_impl
     const ::cuda::std::array<_ExtentT, _MaxRankUZ> __extents,
     const ::cuda::std::array<_StrideTIn, _MaxRankUZ> __src_strides)
   {
+    // See the analogous comment in __copy_optimized_impl::operator() (copy_optimized_kernel.cuh):
+    // stubbed out under LAZY_JIT_DISPATCH so a plain host build never has to parse the device-only
+    // APIs below; the real body is only compiled by NVRTC (which doesn't define LAZY_JIT_DISPATCH).
+#ifndef LAZY_JIT_DISPATCH
     constexpr auto __max_rank = int{_MaxRankUZ};
     // Grid tile decomposition: map linearized block index to src/dst base offsets
     // __grid_coords: linear tile index -> multi-dimensional coordinates (array)
@@ -240,6 +244,7 @@ struct __copy_shared_mem_impl
         __dst_tensor(__coords) = __src_tensor(__coords);
       }
     }
+#endif // !LAZY_JIT_DISPATCH
   }
 };
 } // namespace cuda::experimental
