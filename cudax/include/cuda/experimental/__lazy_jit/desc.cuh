@@ -55,23 +55,16 @@ template <class _ArgsTuple>
 //! @brief Result of the JIT copy dispatch (only used when @c LAZY_JIT_DISPATCH is defined).
 struct KernelDesc
 {
-  const char* code{};
-  //! @brief Bare, comma-separated template argument list (e.g. "T0, T1, T2") for the @c __global__
-  //! kernel template defined/pulled in by @c code -- NOT wrapped in "kernel<...>" or "tuple<...>". The
-  //! caller builds the full NVRTC name-expression by wrapping this in the kernel's qualified name, e.g.
-  //! @c "::ns::my_kernel<" + functor_t + ">".
-  ::std::string functor_t{};
+  const char* code;
+  ::std::string functor_t;
   kernel_args_ptr args_bundle{nullptr, +[](void*) {}};
-  const char* type_id_name{};
-  const char* other_type_id_name{};
-  unsigned long long type_id_hash = 0;
-  unsigned grid_dim_x             = 0;
-  unsigned grid_dim_y             = 1;
-  unsigned grid_dim_z             = 1;
-  unsigned block_dim_x            = 0;
-  unsigned block_dim_y            = 1;
-  unsigned block_dim_z            = 1;
-  unsigned shared_mem_bytes       = 0;
+  unsigned grid_dim_x;
+  unsigned grid_dim_y;
+  unsigned grid_dim_z;
+  unsigned block_dim_x;
+  unsigned block_dim_y;
+  unsigned block_dim_z;
+  unsigned shared_mem_bytes;
 };
 } // namespace lazy_jit
 } // namespace cuda::experimental

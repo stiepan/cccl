@@ -95,15 +95,8 @@ inline void __fill_launch_dims(KernelDesc& __desc, const _Config& __config)
   __desc.shared_mem_bytes = static_cast<unsigned>(__dynamic_shared_memory_bytes(__config.options()));
 }
 
-//! @brief Same as @c make_kernel_desc, but for a *functor*-style kernel: instead of an already-fully-
-//! instantiated kernel (function pointer or reference), @p _Functor is a stateless, default-constructible
-//! type with a templated @c operator()(_Config, ...) (see @ref __copy_optimized_impl for an example).
-//! JIT-side, it's launched through the generic @c lazy_jit::__functor_kernel<_Functor, _Config>
-//! entry point -- whose own template argument list is just @c <_Functor, _Config>, with @p __args
-//! bundled into a single trailing tuple parameter whose type (@c operator_args_t<_Functor, _Config>) is
-//! derived from @p _Functor itself. So, unlike a bespoke multi-parameter kernel, there's no separate
-//! per-kernel argument-type list to build (or keep in sync) here at all.
-//!
+//! @brief Instead of cuda::launching the kernel,
+//! emit its code for nvrtc compilation and bundle of arguments to pass to compiled kernel
 //! @tparam _Functor The kernel functor type (never actually constructed here).
 template <typename _Submitter, typename _LaunchConfig, typename _Functor, typename... _Args>
 KernelDesc make_kernel_desc(_Submitter&& __submitter, const _LaunchConfig& __conf, const _Functor, _Args&&... __args)
@@ -120,34 +113,14 @@ KernelDesc make_kernel_desc(_Submitter&& __submitter, const _LaunchConfig& __con
   __desc.functor_t       = repr_type<functor_kernel_t>::fixed_string.c_str();
   __desc.args_bundle     = make_kernel_args(__args_tuple);
   __fill_launch_dims(__desc, __conf);
-  __desc.type_id_name       = typeid(functor_kernel_t).name();
-  __desc.type_id_hash       = typeid(functor_kernel_t).hash_code();
-  __desc.other_type_id_name = ::cuda::std::__pretty_nameof<functor_kernel_t>().data();
+  // __desc.type_id_name       = typeid(functor_kernel_t).name();
+  // __desc.type_id_hash       = typeid(functor_kernel_t).hash_code();
+  // __desc.other_type_id_name = ::cuda::std::__pretty_nameof<functor_kernel_t>().data();
   return __desc;
 }
 #endif // LAZY_JIT_DISPATCH
 } // namespace lazy_jit
 } // namespace cuda::experimental
-
-// //! @brief Launch a kernel, or (when @c LAZY_JIT_DISPATCH is defined) stringify the launch for JIT
-// //! dispatch instead of actually launching it.
-// #ifdef LAZY_JIT_DISPATCH
-// //! @param functor_t A stateless kernel functor type (see @c make_kernel_desc's docs) -- @p functor_t
-// //!   is a single type (never a comma-separated list), so, unlike @p kernel/@p conf/@p ..., it needs no
-// //!   special wrapping to survive being an (outer) macro argument.
-// #  define LAUNCH_OR_LAZY_JIT_DISPATCH(stream, conf, functor_t, ...) \
-//     ::cuda::experimental::lazy_jit::make_kernel_desc<functor_t>(stream, conf, __VA_ARGS__)
-// #  define DISPATCH_RET_TYPE ::cuda::experimental::lazy_jit::KernelDesc
-// #  define DISPATCH_RET_VOID return ::cuda::experimental::lazy_jit::KernelDesc{};
-// #else
-// //! @brief Non-JIT branch: @p functor_t is launched directly via @c cuda::launch's own functor-kernel
-// //! overload (see the @c cuda::launch overload taking a functor in `<cuda/__launch/launch.h>`), which
-// //! handles picking/instantiating an appropriate @c __global__ launcher itself.
-// #  define LAUNCH_OR_LAZY_JIT_DISPATCH(stream, conf, functor_t, ...) \
-//     ::cuda::launch(stream, conf, functor_t{}, __VA_ARGS__)
-// #  define DISPATCH_RET_TYPE void
-// #  define DISPATCH_RET_VOID return;
-// #endif // LAZY_JIT_DISPATCH
 
 #include <cuda/std/__cccl/epilogue.h>
 

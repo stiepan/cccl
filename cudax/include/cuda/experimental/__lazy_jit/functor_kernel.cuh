@@ -78,24 +78,6 @@ struct functor_kernel_impl
   }
 };
 
-//! @brief Generic @c __global__ entry point that JIT-launches a stateless kernel functor.
-//!
-//! Mirrors @c cuda::launch's own internal handling of functor kernels (see
-//! @c cuda::__kernel_launcher in `<cuda/__launch/launch.h>`): rather than a bespoke kernel template
-//! whose own template parameter list mixes types, non-type values, and (for JIT) types that don't even
-//! exist host-side (e.g. a bare hierarchy instead of a full @c kernel_config), this launcher's *own*
-//! template argument list is just @c <_Functor, _Hierarchy> -- trivial to spell out in full for an NVRTC
-//! name-expression, regardless of what @p _Functor itself needs. *All* of @p _Functor::operator()'s
-//! arguments -- @p _Hierarchy included -- travel bundled as a *single* @c operator_args_t<_Functor,
-//! _Hierarchy> tuple parameter (derived from @p _Functor itself, rather than separately spelled out as a
-//! variadic @c _Args... pack) and are unpacked into the call to @p _Functor via @c cuda::std::apply (see
-//! @ref functor_kernel_impl) -- this also means the JIT argument bundle only ever needs to carry a
-//! single pointer (to the whole args tuple), regardless of how many arguments @p _Functor::operator()
-//! actually takes.
-//!
-//! Unlike @c cuda::launch's internal launcher, @p _Functor is default-constructed here rather than
-//! passed in as a kernel argument, since JIT dispatch only deals with stateless functors -- this avoids
-//! having to also marshal a functor instance through the JIT argument bundle.
 template <typename _Functor, typename _Hierarchy>
 __global__ void __functor_kernel(const _CCCL_GRID_CONSTANT operator_args_t<_Functor, _Hierarchy> __args)
 {

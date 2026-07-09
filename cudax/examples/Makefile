@@ -19,8 +19,6 @@ INCLUDES := -I $(CCCL)/cudax/include \
 NVCCFLAGS := -std=c++20 -arch=$(ARCH) -Wno-deprecated-gpu-targets \
              --expt-relaxed-constexpr --extended-lambda
 
-# mdspan_copy_transpose: mdspan_copy_transpose.cu
-# 	$(NVCC) $(NVCCFLAGS) $(INCLUDES) $< -o $@
 
 # __copy_optimized (branch 5) example, built two ways:
 #   mdspan_copy_optimized      -> regular dispatch (launches + verifies)
@@ -61,8 +59,6 @@ mdspan_copy_optimized_jit_desc: mdspan_copy_optimized_jit_desc.cu
 	$(CXX) -x c++ -std=c++20 -O1 -DLAZY_JIT_DISPATCH $(INCLUDES) -I /usr/local/cuda/include $< -o $@ -ldl
 
 .PHONY: run-optimized run-optimized-jit run-optimized-jit-desc clean
-# run: mdspan_copy_transpose
-# 	./mdspan_copy_transpose
 
 run-optimized: mdspan_copy_optimized
 	./mdspan_copy_optimized
@@ -74,4 +70,4 @@ run-optimized-jit-desc: mdspan_copy_optimized_jit_desc
 	./mdspan_copy_optimized_jit_desc
 
 clean:
-	rm -f mdspan_copy_transpose mdspan_copy_optimized mdspan_copy_optimized_jit mdspan_copy_optimized_jit_desc
+	rm -f mdspan_copy_optimized mdspan_copy_optimized_jit mdspan_copy_optimized_jit_desc
