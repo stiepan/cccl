@@ -1030,6 +1030,15 @@ public:
     arg_strings.push_back("-fdeprecated-macro");
     arg_strings.push_back("--offload-new-driver");
     arg_strings.push_back("-fskip-odr-check-in-gmf");
+    // Enable C++ exceptions in the host pass (the device passes already do). Even
+    // though CCCL_DISABLE_EXCEPTIONS keeps CCCL itself from throwing, an embedder
+    // can redefine _CCCL_THROW to throw its own type and catch it at its entry
+    // point; without these the host pass emits no landing pads / unwind info and
+    // such a throw would std::terminate instead of reaching the handler. (Just
+    // -fexceptions is enough here -- it already yields the CFI needed to unwind
+    // through intervening host frames; -funwind-tables is not required.)
+    arg_strings.push_back("-fcxx-exceptions");
+    arg_strings.push_back("-fexceptions");
     arg_strings.push_back("-O" + std::to_string(config.optimization_level));
     arg_strings.push_back("-std=c++17");
 
