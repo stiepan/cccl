@@ -22,8 +22,9 @@
 #endif // no system header
 
 #if !_CCCL_COMPILER(NVRTC)
+#  include <cuda/__device/attributes.h>
+#  include <cuda/__device/device_ref.h>
 #  include <cuda/__driver/driver_api.h>
-#  include <cuda/devices>
 #endif // !_CCCL_COMPILER(NVRTC)
 
 #include <cuda/std/__cstddef/types.h>
@@ -58,8 +59,8 @@ using __vector_access_t = __vector_access<_VectorBytes>;
 {
 #  if _CCCL_CTK_AT_LEAST(13, 0)
   const auto __dev_id = ::cuda::__driver::__cudevice_to_ordinal(::cuda::__driver::__ctxGetDevice());
-  const auto __dev    = ::cuda::devices[__dev_id];
-  const auto __major  = __dev.attribute<::cudaDevAttrComputeCapabilityMajor>();
+  const ::cuda::device_ref __dev{static_cast<int>(__dev_id)};
+  const auto __major = __dev.attribute<::cudaDevAttrComputeCapabilityMajor>();
   return (__major >= 10) ? 32 : 16;
 #  else // ^^^ _CCCL_CTK_AT_LEAST(13, 0) ^^^ / vvv _CCCL_CTK_BELOW(13, 0) vvv
   return 16;

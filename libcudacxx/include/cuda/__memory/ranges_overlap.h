@@ -22,15 +22,12 @@
 #endif // no system header
 
 #include <cuda/std/__concepts/concept_macros.h>
+#include <cuda/std/__functional/operations.h>
 #include <cuda/std/__iterator/concepts.h>
 #include <cuda/std/__memory/pointer_traits.h>
 #include <cuda/std/cstdint>
 
 #include <cuda/std/__cccl/prologue.h>
-
-#if _CCCL_HOST_COMPILATION()
-#  include <functional>
-#endif // _CCCL_HOST_COMPILATION()
 
 _CCCL_BEGIN_NAMESPACE_CUDA
 
@@ -54,9 +51,9 @@ template <typename _Tp>
 [[nodiscard]] _CCCL_HOST_API bool
 __ptr_ranges_overlap_host(_Tp* __lhs_begin, _Tp* __lhs_end, _Tp* __rhs_begin, _Tp* __rhs_end) noexcept
 {
-  _CCCL_ASSERT(::std::less_equal<>{}(__lhs_begin, __lhs_end), "lhs range is invalid");
-  _CCCL_ASSERT(::std::less_equal<>{}(__rhs_begin, __rhs_end), "rhs range is invalid");
-  return ::std::less<>{}(__lhs_begin, __rhs_end) && ::std::less<>{}(__rhs_begin, __lhs_end);
+  _CCCL_ASSERT(::cuda::std::less_equal<>{}(__lhs_begin, __lhs_end), "lhs range is invalid");
+  _CCCL_ASSERT(::cuda::std::less_equal<>{}(__rhs_begin, __rhs_end), "rhs range is invalid");
+  return ::cuda::std::less<>{}(__lhs_begin, __rhs_end) && ::cuda::std::less<>{}(__rhs_begin, __lhs_end);
 }
 #endif // !_CCCL_COMPILER(NVRTC)
 

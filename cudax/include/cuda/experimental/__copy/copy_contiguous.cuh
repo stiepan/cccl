@@ -24,9 +24,10 @@
 #include <cub/device/dispatch/tuning/tuning_transform.cuh>
 
 #include <cuda/__cmath/ceil_div.h>
-#include <cuda/__device/all_devices.h>
 #include <cuda/__device/arch_id.h>
 #include <cuda/__device/arch_traits.h>
+#include <cuda/__device/attributes.h>
+#include <cuda/__device/device_ref.h>
 #include <cuda/__launch/configuration.h>
 #include <cuda/__launch/launch.h>
 #include <cuda/__stream/stream_ref.h>
@@ -124,8 +125,8 @@ __global__ void __copy_contiguous_kernel(
 [[nodiscard]] _CCCL_HOST_API inline int __bytes_in_flight() noexcept
 {
   const auto __dev_id = ::cuda::__driver::__cudevice_to_ordinal(::cuda::__driver::__ctxGetDevice());
-  const auto __dev    = ::cuda::devices[__dev_id];
-  const auto __cc     = ::cuda::device_attributes::compute_capability(__dev);
+  const ::cuda::device_ref __dev{static_cast<int>(__dev_id)};
+  const auto __cc = ::cuda::device_attributes::compute_capability(__dev);
   return CUB_NS_QUALIFIER::detail::transform::cc_to_min_bytes_in_flight(__cc);
 }
 

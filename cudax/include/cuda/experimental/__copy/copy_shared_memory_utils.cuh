@@ -25,7 +25,6 @@
 
 #  include <cuda/__cmath/ceil_div.h>
 #  include <cuda/__cmath/round_up.h>
-#  include <cuda/__device/all_devices.h>
 #  include <cuda/__device/attributes.h>
 #  include <cuda/__device/device_ref.h>
 #  include <cuda/__driver/driver_api.h>
@@ -101,7 +100,7 @@ __num_contiguous_dimensions(const __raw_tensor<_ExtentT, _StrideT, _Tp, _MaxRank
 [[nodiscard]] _CCCL_HOST_API inline ::cuda::device_ref __current_device() noexcept
 {
   const auto __dev_id = ::cuda::__driver::__cudevice_to_ordinal(::cuda::__driver::__ctxGetDevice());
-  return ::cuda::devices[__dev_id];
+  return ::cuda::device_ref{static_cast<int>(__dev_id)};
 }
 
 //! Maximum extent of a single tile dimension, set to the warp size so that the innermost tile dimension maps to a
