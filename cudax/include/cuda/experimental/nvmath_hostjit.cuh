@@ -11,113 +11,208 @@
 #ifndef _CUDA_EXPERIMENTAL_NVMATH_HOSTJIT_CUH
 #define _CUDA_EXPERIMENTAL_NVMATH_HOSTJIT_CUH
 
-//! @file
-//! Opt-in shim (enabled by defining `NVMATH_HOSTJIT` before inclusion) that makes
-//! CCCL's error reporting propagatable across an in-process hostjit boundary.
+#include <cuda/std/detail/__config>
+
+#include <cuda/std/__exception/exception_macros.h>
+#include <cuda/std/__exception/terminate.h>
+
+#include <nv/target>
+
+#if !_CCCL_HOSTED()
+
+//! Freestanding stubs for the standard exception hierarchy that CCCL's copy path
+//! throws. hostjit compiles CCCL freestanding, so `<stdexcept>`/`<exception>` are
+//! absent and these types would otherwise be undefined. The stubs copy their
+//! message into a fixed inline buffer (no heap, no host stdlib), so a thrown
+//! object owns its text for the lifetime CCCL needs (through unwinding to the
+//! embedder's catch). Only defined for freestanding (`!_CCCL_HOSTED()`); a hosted
+//! sanity build uses the real standard library.
 //!
-//! hostjit compiles CCCL with `-DCCCL_DISABLE_EXCEPTIONS=1`, so `_CCCL_THROW`
-//! degrades to `::cuda::std::terminate()`: any precondition violation (e.g. an
-//! invalid mdspan layout) or CUDA error aborts the whole host process instead of
-//! surfacing an error the embedder can handle. When `NVMATH_HOSTJIT` is defined,
-//! this header redefines `_CCCL_THROW` to instead throw a lightweight
-//! `nvmath_hostjit_error`, which the embedder catches at its entry point and
-//! converts into a host-language exception (e.g. a Python exception).
-//!
-//! When `NVMATH_HOSTJIT` is not defined this header is empty, so it is inert for
-//! ordinary (hosted / NVRTC) builds.
-//!
-//! Must be included BEFORE the CCCL headers whose `_CCCL_THROW` uses should be
-//! overridden (e.g. `<cuda/experimental/copy.cuh>`). It force-includes
-//! `exception_macros.h` first so that header's include guard is set and our
-//! redefinition survives subsequent (guard-skipped) inclusions.
-
-#ifdef NVMATH_HOSTJIT
-
-#  include <cuda/std/__exception/exception_macros.h>
-#  include <cuda/std/__exception/terminate.h>
-#  include <cuda/std/__type_traits/is_convertible.h>
-
-#  include <nv/target>
-
-namespace cuda::experimental
+//! Defining these in namespace `std` is technically reserved, but is the
+//! established pattern for a freestanding/embedded C++ environment and matches how
+//! hostjit already stubs other std facilities.
+namespace std
 {
-//! @brief Lightweight, freestanding-friendly exception carrying a CCCL diagnostic.
-//!
-//! Only stores pointers to string literals (type name, file, message), which have
-//! static storage duration, so instances are trivially copyable and reference no
-//! heap or exception-object-owned storage.
-class nvmath_hostjit_error
+class exception
 {
 public:
-  constexpr nvmath_hostjit_error(const char* __type, const char* __file, int __line, const char* __msg) noexcept
-      : __type_(__type)
-      , __file_(__file)
-      , __line_(__line)
-      , __msg_(__msg)
-  {}
+  exception() noexcept
+  {
+    __what_[0] = '\0';
+  }
+  exception(const exception&) noexcept            = default;
+  exception& operator=(const exception&) noexcept = default;
+  virtual ~exception() noexcept {}
 
-  [[nodiscard]] constexpr const char* what() const noexcept
+  [[nodiscard]] virtual const char* what() const noexcept
   {
-    return __msg_;
+    return __what_;
   }
-  [[nodiscard]] constexpr const char* type_name() const noexcept
+
+protected:
+  //! Copy @p __msg into the buffer, truncating to fit and always NUL-terminating.
+  void __assign(const char* __msg) noexcept
   {
-    return __type_;
+    unsigned __i = 0;
+    if (__msg != nullptr)
+    {
+      for (; __msg[__i] != '\0' && __i + 1 < sizeof(__what_); ++__i)
+      {
+        __what_[__i] = __msg[__i];
+      }
+    }
+    __what_[__i] = '\0';
   }
-  [[nodiscard]] constexpr const char* file() const noexcept
+
+  //! Append @p __s onto the current message (bounded, NUL-terminated).
+  void __append(const char* __s) noexcept
   {
-    return __file_;
+    unsigned __len = 0;
+    while (__len + 1 < sizeof(__what_) && __what_[__len] != '\0')
+    {
+      ++__len;
+    }
+    if (__s != nullptr)
+    {
+      for (; *__s != '\0' && __len + 1 < sizeof(__what_); ++__s, ++__len)
+      {
+        __what_[__len] = *__s;
+      }
+    }
+    __what_[__len] = '\0';
   }
-  [[nodiscard]] constexpr int line() const noexcept
+
+  //! Append the decimal representation of @p __v (bounded, NUL-terminated).
+  void __append_int(long __v) noexcept
   {
-    return __line_;
+    char __digits[24];
+    int __n             = 0;
+    const bool __neg    = __v < 0;
+    unsigned long __mag = __neg ? (0UL - static_cast<unsigned long>(__v)) : static_cast<unsigned long>(__v);
+    if (__mag == 0)
+    {
+      __digits[__n++] = '0';
+    }
+    while (__mag != 0)
+    {
+      __digits[__n++] = static_cast<char>('0' + (__mag % 10));
+      __mag /= 10;
+    }
+    char __out[26];
+    int __k = 0;
+    if (__neg)
+    {
+      __out[__k++] = '-';
+    }
+    while (__n != 0)
+    {
+      __out[__k++] = __digits[--__n];
+    }
+    __out[__k] = '\0';
+    __append(__out);
+  }
+
+  char __what_[512];
+};
+
+class logic_error : public exception
+{
+public:
+  explicit logic_error(const char* __msg) noexcept
+  {
+    __assign(__msg);
+  }
+};
+
+class runtime_error : public exception
+{
+public:
+  explicit runtime_error(const char* __msg) noexcept
+  {
+    __assign(__msg);
+  }
+};
+
+class invalid_argument : public logic_error
+{
+public:
+  explicit invalid_argument(const char* __msg) noexcept
+      : logic_error(__msg)
+  {}
+};
+
+class length_error : public logic_error
+{
+public:
+  explicit length_error(const char* __msg) noexcept
+      : logic_error(__msg)
+  {}
+};
+
+class out_of_range : public logic_error
+{
+public:
+  explicit out_of_range(const char* __msg) noexcept
+      : logic_error(__msg)
+  {}
+};
+
+class overflow_error : public runtime_error
+{
+public:
+  explicit overflow_error(const char* __msg) noexcept
+      : runtime_error(__msg)
+  {}
+};
+} // namespace std
+
+//! Freestanding stub for `::cuda::cuda_error`. The real type is hosted-only (it
+//! formats via snprintf/cudaGetErrorString); here we derive from the stubbed
+//! `::std::runtime_error` and fold the CUDA status / API name into `what()` so the
+//! `_CCCL_TRY_CUDA_API` path (`_CCCL_THROW(::cuda::cuda_error, status, msg, api)`)
+//! both compiles and yields a readable message. No conflict with the real type:
+//! `cuda_error.h` defines nothing under `!_CCCL_HOSTED()`.
+namespace cuda
+{
+class cuda_error : public ::std::runtime_error
+{
+public:
+  cuda_error(int __status, const char* __msg, const char* __api = nullptr) noexcept
+      : ::std::runtime_error(__msg)
+      , __status_(__status)
+  {
+    if (__api != nullptr)
+    {
+      __append(" [");
+      __append(__api);
+      __append("]");
+    }
+    __append(" (cuda error ");
+    __append_int(__status);
+    __append(")");
+  }
+
+  [[nodiscard]] int status() const noexcept
+  {
+    return __status_;
   }
 
 private:
-  const char* __type_;
-  const char* __file_;
-  int __line_;
-  const char* __msg_;
+  int __status_;
 };
+} // namespace cuda
 
-//! @brief Extract the human-readable message from `_CCCL_THROW`'s trailing args.
-//!
-//! Call sites differ: `_CCCL_THROW(::std::invalid_argument, "msg")` puts the
-//! message first, while `_CCCL_THROW(::cuda::cuda_error, status, "msg", ...)` puts
-//! a status int (and possibly a source_location) around it. We return the first
-//! argument convertible to `const char*`, skipping the rest.
-[[nodiscard]] constexpr const char* __nvmath_pick_msg() noexcept
-{
-  return "unspecified error";
-}
+#endif // !_CCCL_HOSTED()
 
-template <class _First, class... _Rest>
-[[nodiscard]] constexpr const char* __nvmath_pick_msg(_First __first, _Rest... __rest) noexcept
-{
-  if constexpr (::cuda::std::is_convertible_v<_First, const char*>)
-  {
-    return static_cast<const char*>(__first);
-  }
-  else if constexpr (sizeof...(_Rest) > 0)
-  {
-    return ::cuda::experimental::__nvmath_pick_msg(__rest...);
-  }
-  else
-  {
-    return "unspecified error";
-  }
-}
-} // namespace cuda::experimental
-
-// Redefine _CCCL_THROW to throw our exception on the host, terminate on device
-// (mirroring CCCL's own NV_IF_ELSE_TARGET pattern -- device code cannot throw).
-#  undef _CCCL_THROW
-#  define _CCCL_THROW(_TYPE, ...)                                                                             \
-    NV_IF_ELSE_TARGET(NV_IS_HOST,                                                                             \
-                      (throw ::cuda::experimental::nvmath_hostjit_error(                                      \
-                         #_TYPE, __FILE__, __LINE__, ::cuda::experimental::__nvmath_pick_msg(__VA_ARGS__));), \
-                      (::cuda::std::terminate();))
-
-#endif // NVMATH_HOSTJIT
+// Redefine _CCCL_THROW to construct and throw the real exception type on the host
+// (mirroring CCCL's own do/while + NV_IF_ELSE_TARGET form -- device code cannot
+// throw, so it terminates). With the stubs above, `_TYPE(__VA_ARGS__)` names a
+// defined type even in the freestanding hostjit environment.
+#undef _CCCL_THROW
+#define _CCCL_THROW(_TYPE, ...)                                                             \
+  do                                                                                        \
+  {                                                                                         \
+    NV_IF_ELSE_TARGET(NV_IS_HOST, (throw _TYPE(__VA_ARGS__);), (::cuda::std::terminate();)) \
+  } while (0)
 
 #endif // _CUDA_EXPERIMENTAL_NVMATH_HOSTJIT_CUH
